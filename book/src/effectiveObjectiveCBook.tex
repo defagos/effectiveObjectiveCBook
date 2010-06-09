@@ -1,0 +1,81 @@
+\documentclass[a4paper,oneside]{book}
+
+\usepackage[english]{babel}
+\usepackage{makeidx}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{mathrsfs}
+\usepackage{dsfont}
+\usepackage[usenames]{color}
+\usepackage{syntonly}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{color}
+% Must select the proper subsets from the ifsym package, see ifsym.sty in ${TexInstall}\tex\latex
+\usepackage[misc]{ifsym}
+\usepackage{pifont}
+% Changes the typewriter font family to have bold fonts, etc.
+\usepackage[T1]{fontenc}
+\usepackage[scaled]{luximono}
+\lstset{
+    language=[Objective]C,
+    showstringspaces=false,
+    basicstyle=\small\ttfamily
+}
+
+\definecolor{light-gray}{gray}{0.9}
+
+\makeindex
+
+\addtolength{\hoffset}{-1.25cm}
+\addtolength{\textwidth}{2.5cm}
+\addtolength{\textheight}{2cm}
+\addtolength{\voffset}{-1cm}
+
+\begin{document}
+\frontmatter
+
+\newlength{\centeroffset}
+\thispagestyle{empty}
+\vspace*{\stretch{1}}
+\noindent\hspace*{\centeroffset}\makebox[0pt][l]{\begin{minipage}{\textwidth}
+\center
+{\Huge\bfseries Effective Objective-C}
+\noindent\rule[-1ex]{\textwidth}{2pt}\\[2.5ex]
+\emph{\Large A collection of best design practices for  in Objective-C}
+\end{minipage}}
+
+\vspace{\stretch{1}}
+\noindent\hspace*{\centeroffset}\makebox[0pt][l]{\begin{minipage}{\textwidth}
+\center 
+written by {\bfseries Samuel D\'efago}\\[1.5ex]
+{defagos -at- gmail.com}
+\end{minipage}}
+
+\vspace*{\stretch{1}}
+\noindent\hspace*{\centeroffset}\makebox[0pt][l]{\begin{minipage}{\textwidth}
+\center 
+2010
+\end{minipage}}
+
+\tableofcontents
+\mainmatter
+%\include{classDesign}
+%\include{classImplementation}
+%\include{resourceManagement}
+%\include{implementations}
+%\include{codingConventions}
+%\include{frameworks}
+%\include{tools}
+%\include{garbageCollectedObjectiveC}
+%\include{iPhoneDevelopment}
+%\include{miscellany}
+
+%\appendix
+%\include{appendix}
+
+\addcontentsline{toc}{chapter}{Bibliography}
+\bibliographystyle{amsplain}
+\bibliography{refs}
+
+\end{document}

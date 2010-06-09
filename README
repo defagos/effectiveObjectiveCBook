@@ -1,0 +1,6 @@
+Effective Objective-C
+---------------------
+
+This is a collection of some practices I (humbly) consider to be best practices when coding
+in Objective-C. The book title is borrowed from the excellent Effective-C++ book series by
+Scott Meyers.

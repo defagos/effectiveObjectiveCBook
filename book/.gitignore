@@ -1,0 +1,14 @@
+# List of files which must never be tracked
+# -----------------------------------------
+
+# Important remark not to be forgotten (see gitignore documentation): Below are the files
+# which will NEVER be tracked. Files which have been committed once (i.e. which are tracked
+# in the repository) but which we then do not want to track for some time must be flagged 
+# as unchanged in the index, see git update-index --assume-unchanged.
+# An example is the template of a configuration file: At some points in time we want to
+# commit changes of the template (since the template is part of the distribution), but
+# in between those changes the changes made to it locally must not be committed. In 
+# between commits we therefore must flag such files as unchanged.
+
+# Ignore generated book files
+pdf/

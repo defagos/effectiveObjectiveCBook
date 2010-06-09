@@ -1,0 +1,4 @@
+Book LaTeX sources
+------------------
+This directory contains the book LaTeX source and everything needed to build it. LaTeX and
+appropriate packages must be installed. For Windows platforms use MiKTeX.

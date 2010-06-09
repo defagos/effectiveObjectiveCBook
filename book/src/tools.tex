@@ -1,0 +1,15 @@
+3. Use NSAssert to check conditions. Do not forget to disable it in the release build using the NS_BLOCK_ASSERTIONS pre-processor definition
+
+6. Use the #pragma mark directive to create distinct sections in your implementation files (e.g. for construction / desctruction, protocol implementation functions, etc.). XCode displays these sections in its code browser (since this only works in implementation files, no need to #pragma mark sections in header files, though)
+
+25. Use XCode code templates wisely. Some contain minor typos, and their style might not be consistent with yours (though both should not be too far from each other :-) )
+
+39b. XCode: Disable line wrapping in preferences->indentation 
+XCode tips & tricks: http://developer.apple.com/mac/library/documentation/DeveloperTools/Conceptual/XcodeWorkspace/000-Introduction/Introduction.html
+
+39c. Use Crustify for formatting ( http://www.invasivecode.com/2010/05/format-your-code-with-crustify/). XCode has poor flexibility and poor
+support. Also see http://hackertoys.com/2008/09/18/adding-a-code-beautifier-script-to-xcode/. Still must find if it is possible to have the script being executed every time the user presses enter...
+
+53. Use #pragma mark - wisely , e.g. to separate classes in implementation files.
+
+53b. Debugging and zombies

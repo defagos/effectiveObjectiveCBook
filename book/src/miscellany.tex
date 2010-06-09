@@ -1,0 +1,12 @@
+7. Always use localized strings, never hardcode strings in your code. This will make translation of your application easier
+
+10. Localize the scope of your variables as much as possible: Unlike C (and like C++), Objective-C allows you to define a variable at the point it is used for the first time, it does not require you to declare all variables at the beginning of a block.
+
+24. Comment your code as you write it. Commenting can be tedious for some people, especially if made all at once. By documenting and coding at the same time, your comments will be more accurate and (probably) less painful to write
+
+32. Static NSString objects are created using @”My little NSString”, C-string objects with “My little C-string”. Do not mix both, and always use NSString in Objective-C code.
+
+51. “Javadoc” du code: Voir NSURLConnection.h
+
+62. When writing libraries, write them in such a way they can be used
+indifferently with garbage collection or reference counting

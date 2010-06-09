@@ -1,0 +1,17 @@
+30. When objects are put into Cocoa containers, no copy is made, the container simply retains the object.
+
+41. View hierarchy creation is done by a view controller, either from a nib or by implementing the loadView method (which must set the view-controller view property to be the root view of the hierarchy it just built)
+
+44. ViewController should not create the model, but use an existing one (in most cases created just prior it). This way can be shared by several views.
+
+52. Always remember that UIKit (AppKit as well) is not thread-safe in your multithreaded designs.
+
+53. Excellent concept: Etant donné que le GUI iPhone doit tourner dans un thread (car pas thread-safe), appliquer le principe expliqué ci-dessous:
+“sidesteping the problem of threading bugs in your code. An iPhone app is one big event loop –  your classes have methods that the event loop calls in response to stuff happening on the device and in your app. When you use the URL loading system’s asynchronous APIs, the iPhone uses a different thread than the one running your app’s event loop to load the contents of the URL, and it makes callbacks via your apps event loop when data has been downloaded.”
+En d’autres termes, poster les résultats d’un traitement asynchrone directement comme un event sur la main event loop. Ainsi, c’est le thread principal qui sera notifié du changement.
+En règle générale: Pour tout thread faisant tourner sa runloop, on peut appliquer l’approche suivante pour récupérer du contenu de manière asynchrone: Une requête est effectuée, avec delegate et méthode à appeler sur ce delegate (en principe conformément à un protocole). La récupération du contenu est lancée de manière asynchrone et, dès que le contenu a été récupéré, le résultat est posté en tant qu’event de la runloop ayant initié la requête. La seule contrainte est donc que le thread initiant la requête ait sa runloop. Voir également la documentation des méthodes initWithRequest de NSURLConnection.h
+
+54. Attention! Le concept de run loop est un des plus importants à assimiler!! Voir documentation Apple à ce sujet. C’est également elle qui reçoit les notifications!
+
+56. To keep ViewControllers as decoupled as possible, they should communicate using a delegation mechanism, notifying when a value has been chosen or when an exit button is pressed, for example. See for example the standard modal controllers UIImagePickerController, UIVideoEditorController, GKPeerPickerController
+, ... The protocol methods are usually optional

@@ -1,0 +1,93 @@
+1. Identify the designated initializer in the class documentation header. This is the best place to put it since the designated initializer might have been defined in a superclass (i.e. it does not appear explicitly in the interface of the class we are documenting) but has been overriden by the class
+
+4. Always make instance variables @private, do not keep the default @protected unless needed. @protected is not more encapsulated than @public
+
+5. You can define private methods in your class’ implementation file. Simply use categories, as follows: @interface MyClass (hiddenInterface) <your interface private here> @end
+(warning: messages can still be sent to such "private" methods, but in general the compiler will issue a warning)
+
+14. If a class defines a protocol so that clients can interface with it, define the protocol in the same header file as the class
+
+21. Override the NSObject description method for providing meaningful descriptions (this also helps debugging since the gdb po command sends this message). If pointer equality does not mean object equality (which is the most common case), then override the NSObject isEqual method (in which case you should also override the hash method)
+
+28. When declaring properties, think about their attributes wisely (readonly, assign, copy, ...). If you do not synthesize them, be sure their definitions match the declarations.
+
+36. Any protocol should have <NSObject> as “parent” protocol. This is not required for protocols having only mandatory members, but for optional ones this is required when implementing the delegating class (we must test respondsToSelector prior to applying optional methods, and the compiler will return a warning if the protocol is not derived from NSObject, since this function is in the NSObject protocol)
+
+40. Protocol methods for class SomeClass should take a SomeClass * argument. This argument must always allow to access the emitter of the message. We pick up among two choices depending on whether the SomeClass action has an associated parameter or not:
+
+@protocol SomeClassDelegate <NSObject>
+- (void)someClassWillExit:(SomeClass *)someClass;                 // Action with no associated parameter
+- (void)someClass:(SomeClass *)someClass hasDoneSomeWork:(Work *)work;          // Action associated with a parameter
+@end
+
+As usual, we may have additional parameters, but this does not alter the notation:
+
+@protocol SomeClassDelegate <NSObject>
+- (void)someClasHasExited:(SomeClass *)someClass (int)exitCode:exitCode;                 // Action with no associated parameter, one other parameter
+- (void)someClass:(SomeClass *)someClass hasDeletedSomeWork:(Work *)work (Reason *)reason;          // Action associated with a parameter, one other parameter
+@end
+
+43. Avoid optional protocols, especially in rapidly changing classes. The reason is that optional protocols need some work:
+    - Testing if a method is supported when called in the class declaring the protocol for interacting with it. For performance reasons: A flag saves whether or not the delegate implements the method
+    - Implementing the method in client classes
+If a protocol changes (e.g. a function name changes), then it won’t get detected until runtime (the protocol being optional, the code still compiles). But it won’t work anymore at runtime. To fix it:
+    - The tests and the flag name must be updated in the client class
+    - The client class implementation must be altered to reflect the new function name
+To be more robust in rapidly changing classes, comment out the @optional during rapid development phases. In client classes, implement stubs (function call performance penalty since no inline, but not dramatic). At the very end, when the protocol is stable, you can then add the flags and all code needed to make the methods really optional. If you don’t mind paying a performance penalty, you can let all protocol methods mandatory.
+
+45. For heavily used small types, consider writing convenience constructors (convenience factory methods returning autoreleased objects)
+
+49. Document type of objects contained within a container
+
+49b. Do not use float / double. Use NSDecimalNumber / NSNumber
+
+49c. (List items discussed in effective C++ but also relevant here; do not discuss them,
+Scott Meyers explanations are unbeatable)
+
+50. Decide when to use delegation and when to use notification (rule of thumb: one client needs to be notified -> delegate; several -> notification).
+
+Notification is used to broadcast messages to possibly several recipients unknown from the sender.
+Delegation is used to send messages to a single known recipient acting on behalf of the sender.
+
+If both use cases can happen (and you want to be able to keep your designs simple using protocols), then you can implement both! Show how!
+
+50b. Use forward declarations to minimize dependencies among files
+
+55. If you override a function, do not forget to call the parent implementation
+
+57. init = constructor; cannot be disabled, unlike C++: In general, try to implement init by calling the designated initializer with meaningful default values. If not possible, then use the following macro to throw an exception (with clear error message) when such a method is called:
+#define FORBIDDEN_INHERITED_METHOD()            [NSException raise:@"Forbidden inherited method call" \
+                                                            format:@"The '%s' method has been inherited by " \
+                                                                    "class '%@' but could not be meaningfully " \
+                                                                    "overriden. This method has therefore been " \
+                                                                    "disabled", _cmd, [self class]]
+This should only be done for init functions, otherwise we break the is-a character of inheritance), for which such a mechanism is lacking.
+
+
+59. Notifications which are declared / defined by a class must be sent by instances of this class only. If notification is the result of a notification sent by a nested object within the instance, the instance should catch it before throwing the notification again (maybe another one). This preserves encapsulation and this is far easier to follow.
+
+
+60. If you create a property simply forwarding to a property of a nested object, be sure that their attributes match:
+
+@interface MyClass {
+    UITextField *m_textField;
+}
+@property (???) caption;
+@end
+
+Here the caption property simply forwards to the UITextField text property:
+
+@implementation MyClass
+- (NSString *)caption
+{
+    return m_textField.text;
+}
+- (void)setCaption:(NSString *)caption
+{
+    m_textField.text = caption;
+}
+@end
+
+therefore its attributes must be those of the text property:
+
+@property (nonatomic, copy) caption;

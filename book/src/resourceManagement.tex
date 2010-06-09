@@ -1,0 +1,34 @@
+10. Never call dealloc directly. Only call (auto)release
+
+11. In setters for object members, use the “retain, then release” idiom (retain the new value, then release the old one). Other idioms exist, but this is the safest and shortest (# lines of code) idiom, and the performance hit is paid only when assigning the same value (which is in general quite rare)
+
+12. Assume that you own objects you get using new, alloc, copy or mutableCopy. You also own objects you explicitly retain. In all other cases assume you do not own them and that those objects are autorelease-d (i.e. will be released when the memory pool itself is released, which happens at least at the end of each event loop for GUI apps, i.e. after each event has been processed!). When writing your own classes, implement this rule consistently
+
+23. When returning objects from functions which allocated them, autorelease the object upon returning it.
+
+29. Within a given block of code / class, the number of alloc / copy / mutableCopy / retain / new must match the number of release / autorelease messages
+
+31. autorelease needs an autorelease memory pool. Be sure you define one just after entering your program (if using XCode templates this code is readily available from the start). Additionnal autorelease pools can be defined for fine-grained control over the lifetime of autorelease objects (and are in fact defined by the framework). Autorelease pools are stacked so that newly autorelease-d objects end up in the pool at the top. Keep in mind that GUI apps release an autorelease pool at the end of each event loop. One autorelease pool stack exists for each thread, and creating / releasing this pool should be the first / last thing your thread function performs.
+
+32. Beware of cyclic references between classes. When such cycles must be broken, identify which class must own a strong reference to the other one. In the owned class simply reference the owner class instance using a “mw_” member variable. In Cocoa, references to table data sources, outline views, notification observers and delegates are always weak. Try to stick to these conventions when writing your own classes.
+
+33. Scarced resources (file descriptors, network connections, buffers, caches, etc.) must not be released in dealloc, since dealloc could be sidestepped (e.g. bug in reference-counting management, making the release not occur where expected; or application tear-down). Instead, create a cleanup function and call it when you want to dispose of a scarce resource in a predictable way. This call occurs usually just prior to a release call, but this way the scarce resource is guaranteed to be released, even if the release which follows does not end up in a dealloc.
+
+34. When receiving an autoreleased object (which is what you assume in most cases, see 15), you have the choice to retain it if you think it will not survive long enough before being really released. Otherwise you can just work with it as a temporary, it will survive until the autorelease pool is released. For “local” functions it is safe to assume that such objects will survive, unless of course you nest an autorelease memory pool release in between.
+
+46. Best practice for objects with copy semantics, when returning them from objects: return [[obj copy] autorelease];
+
+58. Release early if you can. For example, these two code samples have the same effect:
+
+someView = [[UIView alloc] initWithFrame: ...];
+[parentView addSubview:someView];
+[someView release];
+
+and
+
+someView = [[[UIView alloc] initWithFrame: ...] autorelease];
+[parentView addSubview:someView];
+
+but in the latter case the memory won’t be released until the autorelease pool is cleared. Of course, if all you have is a convenience constructor, the autoreleased object is fine (especially if the objects are small):
+
+object.someStringPropertyWithCopyAttribute = [NSString stringWithFormat: ...];

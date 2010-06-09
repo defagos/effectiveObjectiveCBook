@@ -1,0 +1,25 @@
+2. Always have the designated initializer of a class call the designated initializer of its superclass
+
+5. Always write initializers as follows: if (self = [super <designated initializer>]) { /* Your initialization code here */ } return self;
+
+9. Always release member variables in the dealloc function, then call [super dealloc] (compiler should warn anyway)
+
+22. When implementing optional methods of a protocol, be sure to check if the receiver supports the message before sending it
+
+23. For performance reasons, it is good practice to cache introspection information where possible. E.g. instead of testing respondsToSelector every time an optional protocol method is being applied on a delegate object within the delegating class implementation file, you could write your delegate setter so that, when a new value is set, this information is checked once and saved as boolean values. That way you won’t pay the performance penalty associated with introspection, which can be especially valuable if your protocol method is heavily called.
+
+24. If a delegate object lives longer than an object which uses it, then the class which uses it must set delegateObj.delegate = nil in the dealloc function. This should be quite rare, though, since a delegate is in general created by the class which requires it.
+
+48. Unregister from the notification center in dealloc (if not already unregistered before)
+
+61. Be wary of the best way to write a convenience constructor:
+
+@implementation Vehicle
++(id) vehicleWithColor:(NSColor*)color
+{
+   id newInstance = [[[self class] alloc] init]; // PERFECT, the
+class is dynamically identified ("virtual ctor")
+   [newInstance setColor:color];
+   return [newInstance autorelease];
+}
+@end

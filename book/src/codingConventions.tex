@@ -1,0 +1,19 @@
+5. Identify your instance variables using an “m_” prefix (the prefix “_” is in general reserved). This way you will avoid name clashes or undesired name hiding issues. In the class’ implementation file, this will allow you to clearly state whether you are accessing a member variable directly or through its property (from an OO point-of-view, most of the accesses should be made using properties; of course for creation and destruction you must still access those variables directly). If you use synthesized properties, do not forget to set @synthesize myProperty = m_myProperty.
+
+16. For some member variable m_myVar, the corresponding getter is myVar and the setter is setMyVar (you can avoid defining those explicitly by using properties). An exception exist if m_myVar is a flag (BOOL), in which case the getter needs to be called isMyVar. By sticking to these Objective-C conventions you ensure that your code interacts well with properties, as well as the Key-Value pattern
+
+17. Initializer functions must always begin with init.... Convenience constructors should begin with new... (if they alloc and init) or className... (if they alloc, init and returned an autorelease-d object); note that for Cocoa classes the NS / UI prefix is dropped, i.e. convenience constructors for NSString begin with string... . The usual alloc-init pattern is in general preferred over new-constructors
+
+18. Never use NS / UI prefixes for your own classes. These prefixes are reserved for the Apple frameworks
+
+19. When defining a protocol, choose the name of the protocol methods carefully so that the user can guess when the protocol method is called in. Use verbs such as will..., should..., (about to occur) did..., has..., <action verb>ed... (e.g. finished) (has occurred)
+
+20. If a class SomeClass defines a delegate class protocol, name it SomeClassDelegate
+
+26. For C / C++ code, it is wise to identify pointer variables using a “p” prefix, e.g. pMyPointerVar. This makes statements containing myVar.field (myVar.method()) and pMyPointerVar->field (pMyPointerVar->method()) much clearer. For C++ reference variables (Type &myRefVar), do not use any kind of prefix since member access is the same as for “normal” variables. There is an exception to this rule in Objective-C: Since all objects are pointers and are never accessed using operator->, do not prefix object names with p, e.g. MyObjCVariable *myVar. It might be helpful, though, to identify which among member variables are weak references to objects, e.g. delegate objects (this avoids making the mistake of releasing them in the dealloc implementation). Those variables should be prefixed with “mw_”. There are no class variables in Objective-C, therefore no special notation is required. If using C++, be sure to add an “sm_” prefix in front of them. “Free” static objects should not be used (multi-threading issues), but they still can be helpful when implementing singletons (using local static variables). Non-member static variables should be prefixed with a “s_”
+
+32. Beware of cyclic references between classes. When such cycles must be broken, identify which class must own a strong reference to the other one. In the owned class simply reference the owner class instance using a “mw_” member variable. In Cocoa, references to table data sources, outline views, notification observers and delegates are always weak. Try to stick to these conventions when writing your own classes.
+
+37b. In implementation file, do not access member variables but use properties (self.variable). There is therefore no need for making a convention like “function parameters are name aVariable”, because in a method receiving a parameter called “variable”, we can assign self.variable = variable without ambiguity.
+
+47. Optional nil parameters: call the parameter parameterNameOrNil

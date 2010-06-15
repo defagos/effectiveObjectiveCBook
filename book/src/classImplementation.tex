@@ -12,6 +12,8 @@
 
 48. Unregister from the notification center in dealloc (if not already unregistered before)
 
+55. If you override a function, do not forget to call the parent implementation
+
 61. Be wary of the best way to write a convenience constructor:
 
 @implementation Vehicle
@@ -23,3 +25,5 @@ class is dynamically identified ("virtual ctor")
    return [newInstance autorelease];
 }
 @end
+
+

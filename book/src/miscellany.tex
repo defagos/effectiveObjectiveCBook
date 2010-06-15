@@ -10,3 +10,23 @@
 
 62. When writing libraries, write them in such a way they can be used
 indifferently with garbage collection or reference counting
+
+64. When polishing classes (but not too early in the class' life, otherwise
+this work might be lost because of refactorings), do not forget:
+ - to override each initializer (maybe disabling some irrelevant
+initializers, see other item)
+ - to check that each resource is properly released in dealloc
+ - to check your property attributes for stupid mistakes; add the nonatomic
+attribute for properties in classes which are not thread-safe (when omitted
+properties are atomic by default); you do not want to pay for some sync you
+do not use
+ - to create a description function for use with "%@"
+ - to implement optiona protocols (remove the now unnecessary stubs)
+ - document your class interface (do not forget to mention thread-safety)
+
+ 67. (Idea for writing best practice book / document): Make item title as
+short and clear as possible. Class items by topic (main book layout), but
+also provide other ways to class them (e.g. items before development, during
+development, after development, for polishing phase, refactoring, etc.)
+ 
+ 

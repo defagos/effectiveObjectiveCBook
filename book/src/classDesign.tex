@@ -53,8 +53,6 @@ If both use cases can happen (and you want to be able to keep your designs simpl
 
 50b. Use forward declarations to minimize dependencies among files
 
-55. If you override a function, do not forget to call the parent implementation
-
 57. init = constructor; cannot be disabled, unlike C++: In general, try to implement init by calling the designated initializer with meaningful default values. If not possible, then use the following macro to throw an exception (with clear error message) when such a method is called:
 #define FORBIDDEN_INHERITED_METHOD()            [NSException raise:@"Forbidden inherited method call" \
                                                             format:@"The '%s' method has been inherited by " \
@@ -91,3 +89,25 @@ Here the caption property simply forwards to the UITextField text property:
 therefore its attributes must be those of the text property:
 
 @property (nonatomic, copy) caption;
+
+68. If you change attributes of a property, make any necessary changes if
+those were implemented manually, so that no inconsistency arises
+
+69. Do not create properties if you do not intend to return the same type as
+the underlying member. E.g. having a mutable class but returning the
+immutable object from the property is a bad idea. Create a usual method
+instead, and do not make the property public instead. Two arguments:
+1) This is confusing
+2) If later you try to create a private property, you won't be able to
+change the return type of the public property returning a different type.
+This means that, since you should only access members through their
+properties (see 65b), your implementation will not be able to access the
+full type of the member. In the case of a mutable array for which the
+property returns an immutable array, e.g., this means that the
+implementation will not be able to change the array's content unless it
+breaks the rule by accessing the member directly (or casting, but in my
+tests casting did not work). This is bad.
+In short: Properties must always return the same type as the underlying
+member.
+
+70. For BOOL properties, you have to write the is... accessor yourself.

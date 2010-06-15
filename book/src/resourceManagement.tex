@@ -32,3 +32,394 @@ someView = [[[UIView alloc] initWithFrame: ...] autorelease];
 but in the latter case the memory won’t be released until the autorelease pool is cleared. Of course, if all you have is a convenience constructor, the autoreleased object is fine (especially if the objects are small):
 
 object.someStringPropertyWithCopyAttribute = [NSString stringWithFormat: ...];
+
+//*************** Following design is incorrect, but idea - problem is correctly formulated **********
+
+63. Suppose you have a readonly property which reflects some inner status of
+an object, e.g. an NSString. Imagine e.g. an object which has some function
+renewMessage which, when called, builds a random fortune message
+(fortune-teller). You can access the current message using a readonly
+property fortuneMessage:
+
+@interface Fortune {
+   NSString *m_fortuneMessage;
+}
+- (void)renewMessage;
+
+@property (readonly) NSString *fortuneMessage;
+
+@end
+
+The last message which was built is stored in some internal member variable
+NSString *m_fortuneMessage.
+
+The property is simply synthesized as
+@synthesize fortuneMessage = m_fortuneMessage;
+
+But now: how do you write renewMessage? The old value must be discarded each
+time a new one is built:
+
+- (void)renewMessage
+{
+   [m_fortuneMessage release];
+   // generateFortuneMessage conforms to Objective-C conventions
+   // and returns an autoreleased NSString *
+   m_fortuneMessage = [[self generateFortuneMessage] retain];
+}
+
+The first time the function is called, fortuneMessage is nil, the release is
+a no-op. When later called, the release will take care of releasing the
+previous value.
+
+Note that the final release is done in dealloc:
+
+- (void)dealloc
+{
+   [m_fortuneMessage release];
+   [super dealloc];
+}
+
+Now imagine a similar class where there are many different ways of setting
+fortuneMessage. How can you avoid littering your code with [m_fortuneMessage
+release] calls (and minimize bugs due to forgetting one such call)? And how
+bad does it get when we want this class to be thread-safe?
+
+Answer: Simply add a fortuneMessageRw (read-write) property to the private
+interface of the Fortune class (use categories), with retain attribute (you
+might also add the nonatomic attribute if you do not need thread-safety).
+This way we do not expose the setter in the public interface:
+
+@interface Fortune (hiddenInterface)
+@property (retain) NSString *fortuneMessageRw;
+@end
+
+simply synthesized as
+
+@synthesize fortuneMessageRw = m_fortuneMessage;
+
+Now renewMessage can be simply implemented as follows:
+
+- (void)renewMessage
+{
+   self.fortuneMessageRw = [self generateFortuneMessage];
+}
+
+63 (complem.): Usually, not retain for NSString, but copy.
+
+64. Fix for hidden interfaces: Use extensions, not categories (extension =
+category without name, e.g. @interface MyClass () @end)
+
+This is because @synthesize does not work with categories, but work with
+extensions. It is also nice because the extension methods must be defined in
+the same @implementation block as the main class, whereas this is not the
+case for categories (whose methods must be implemented in @implementation
+MyClass (categoryName) @end )
+
+63 (complem.): Does not work: Two properties cannot be bound to the same
+member variable
+
+-> only solution: create private method for setting with copy / release
+semantics :-(
+
+63 (complem.) Mmmmh. Maybe possible to declare external interface as
+readonly, but to provide a private setter function. Also beware of semantics
+(retain then release; check that not receiving the same object when copying;
+etc.)
+
+//*************** Works, but not the best method. Worth mentioning it **********
+//*************** to pinpoint the fact that there is no need to do that, *******
+//*************** properties have a nice feature which solve the ***************
+//*************** problem nicely, see below
+
+63. (A better approach, but not optimal (optimal approach follows)) The idea
+is to have the getter public and the setter private. We create the setter
+manually in the private interface. This way, the setter can be used to
+implement the proper setter behavior (here release, then copy). Note that in
+the implementation file where the private interface is defined, we can now
+use property access (dot operator) to also set the property, thanks to the
+naming conventions of Objective-C. But the problem is that the setter must
+match other semantics of the public getter (here nonatomic), and this has to
+be implemented manually
+
+main.m
+-------
+
+#import <Foundation/Foundation.h>
+
+#import "Calendar.h"
+
+int main(int argc, char *argv[])
+{
+ Calendar *cal = [[Calendar alloc] init];
+ NSLog(@"Day 1: %@", cal.day);
+ [cal nextDay];
+ NSLog(@"Day 2: %@", cal.day);
+}
+
+Calendar.h
+----------
+#import <Foundation/Foundation.h>
+
+@interface Calendar : NSObject {
+@private
+ NSString *m_day;
+}
+
+- (void)nextDay;
+
+@property (nonatomic, readonly) NSString *day;
+
+@end
+
+Calendar.m
+----------
+#import "Calendar.h"
+
+NSString * c_days[] = {@"Monday", @"Tuesday", @"Wednesday", @"Thursday",
+@"Friday", @"Saturday", @"Sunday"};
+
+@interface Calendar ()
+
+- (void)setDay:(NSString *)day;
+
+@end
+
+@implementation Calendar
+
++ (void)initialize
+{
+ srand(time(NULL));
+}
+
+- (id)init
+{
+ if (self = [super init]) {
+   [self nextDay];
+ }
+ return self;
+}
+
+- (void)nextDay
+{
+ // Can use usual message passing form
+ //[self setDay:c_days[rand() % 7]];
+
+ // or even property call: now the property is writable!
+ self.day = c_days[rand() % 7];
+}
+
+@synthesize day = m_day;
+
+// Not optimal: We have to match the external property attributes
+// manually. Here nonatomic, therefore no @synchronized
+- (void)setDay:(NSString *)day
+{
+ // In general we should test if day is m_day before releasing, otherwise
+ // the copy will fail. But here this is not necessary since this can
+ // never happen
+ [m_day release];
+ m_day = [day copy];
+}
+
+@end
+
+//*************** end ***************
+
+63. (THE solution) See "Property re-declaration" in
+http://developer.apple.com/mac/library/documentation/cocoa/conceptual/Object
+iveC/Articles/ocProperties.html: declare readonly in public interface (with
+copy attribute, but the copy is just here so that any redeclaration of the
+property matches this attribute, and this is one we will need in the private
+redeclaration for the setter). Then redeclare readwrite in private interface
+(extension) with same attributes:
+
+
+main.m
+------
+#import <Foundation/Foundation.h>
+
+#import "Calendar.h"
+
+int main(int argc, char *argv[])
+{
+ Calendar *cal = [[Calendar alloc] init];
+ NSLog(@"Day 1: %@", cal.day);
+ [cal nextDay];
+ NSLog(@"Day 2: %@", cal.day);
+}
+
+
+Calendar.h
+----------
+
+#import <Foundation/Foundation.h>
+
+@interface Calendar : NSObject {
+@private
+ NSString *m_day;
+}
+
+- (void)nextDay;
+
+// here readonly (readonly & readwrite are the only attributes allowed to
+// mismatch between property declaration and re-declarations). The copy
+// attribute is irrelevant for the public interface but is required so
+// that re-declarations match
+@property (nonatomic, readonly, copy) NSString *day;
+
+@end
+
+
+Calendar.m
+----------
+#import "Calendar.h"
+
+NSString * c_days[] = {@"Monday", @"Tuesday", @"Wednesday", @"Thursday",
+                      @"Friday", @"Saturday", @"Sunday"};
+
+@interface Calendar ()
+
+- (void)setDay:(NSString *)day;
+
+// here readwrite with copy semantics
+@property (nonatomic, readwrite, copy) NSString *day;
+
+@end
+
+@implementation Calendar
+
++ (void)initialize
+{
+ srand(time(NULL));
+}
+
+- (id)init
+{
+ if (self = [super init]) {
+   [self nextDay];
+ }
+ return self;
+}
+
+- (void)nextDay
+{
+ self.day = c_days[rand() % 7];
+}
+
+// generate both the public getter and the private setter with copy
+// semantics
+@synthesize day = m_day;
+
+@end
+
+63. (Remark) Of course, even if no public getter is defined, having a
+private setter can eliminate the need for manual retain / release management
+littering code.
+(Remark2): The readwrite attribute is the default one, you do not need to
+use it in the private property re-definition. Just omit the readonly.
+
+ 65 (not perfect, 65b is far better). Good practice for 63: In C++, const
+variables are assigned in an initializer list once for all. There is no
+support for such a concept in Objective-C, but still some variables are set
+once at the object creation. For such variables, having a private property
+is in general useless. For any other internal member which might change
+during the object lifetime, consider providing a private setter (at least; a
+public readonly accessor might still be useful). This way you can forget
+about memory management for such objects, and when you are done with them or
+want to reset them, you just have to assign them nil. In dealloc, instead of
+calling release on objects having a property, simply assign nil.
+
+A good idea: Introduce a notation convention for such "final" members, e.g.
+mf_variableName.
+The term "final" is best suited, because such members are not necessarily
+const. Understand final here as "set once during object creation, and then
+never replaced (but maybe changed)". Imagine e.g. a mutable array whose
+purpose is to contain the results within a datasource object. The datasource
+object can be sent different requests, and before each request the array
+must be flushed to contain the new results. Such an array is final.
+On the contrary, if the datasource were to store its results in an immutable
+array, the corresponding member would not be final since it must be replaced
+each time a new request is performed.
+
+Remark: Private properties are meaningful for final objects. final instance
+variables of primitive type do not suffer from memory management issues and
+do not benefit (in general) from having such a private property, except when
+its purpose is to encapsulate some other piece of work when setting /
+getting a value. In all other cases, do not define a private property.
+
+Remark 2: Prefixes in notation for class members always begin with m, then
+add the other modifiers. The reason is that this allows to find all members
+use auto-completion by entering only m and pressing ESC. In general, when
+designing prefixes, find which ones design subsets and which ones supersets,
+and order the prefixes accordingly.
+
+The problem: Writing the dealloc is tedious since some objects have a
+property (private setter or public) and other not. This is difficult to
+maintain. Knowing that the objects are final do not convey much information
+in Objective-C and could be a pain in the ass if some time later the final
+character is dropped.
+
+65b. (Excellent) No initializing concept in Objective-C and no support,
+therefore do NOT introduce one artificially. Just apply the following rule:
+All member objects must have a corresponding setter (at least private). In
+the implementation of a class, *always* use those setters (except in the
+setter / getter implementation of course!), *never* access member variables
+directly. In the destructor, set all objects to nil.
+This way, encapsulation is preserved, the correct behavior is applied when
+getting / setting values, and additional instructions can be bundled with
+those operations consistently. Moreover, setting to nil is by construction
+equivalent to calling release. This way the code is similar to the one
+written with garbage collection enabled on MacOS! Moreover this is much
+easier to follow than 65, and it is easier to maintain consistently. The
+only issue is performance, but Objective-C is already a "slow" language.
+Moreover, if performance is at premium, some classes can be written without
+this convention where needed. As always, flexibility and encapsulation is
+traded against performance. But this should not really be an issue 90% of
+the time. Of course, this requires writing some more code (but only a little
+more thanks to property synthesization), but at least this also forces the
+programmer to carefully think about threading issues when accessing objects.
+
+Remark: For primitive types, only declare private properties if you need to
+bundle some code with a set / get operation. Primitive types do not suffer
+from memory management issues, therefore "bare" properties would bring
+nothing more. Of course you still might want to provide a public properties
+for client to access an internal variable.
+
+Remark 2: Using this approach, you will usually assign autorelease-d objects
+directly:
+ self.someMember = [[[Clazz alloc] init] autorelease];
+Another idiom when you cannot autorelease (e.g. when creating a crazy number
+of objects in a loop) is:
+ self.someMember = [[Clazz alloc] init];
+ [self.someMember release];
+
+Remark 3: Private properties also motivate why it is not wise to create a
+property which returns a type different from the one of the underlying
+member (most probably upcasted). See 69.
+
+66. When implementing a class, access member variables through their
+properties as much as possible. This also includes the dealloc function in
+which you should call self.variable = nil. The reason is the following: your
+setter was maybe performing some additional work for you, it might therefore
+also was implemented to perform some cleanup work when nil was assigned.
+Simply releasing without the setter would have required you to duplicate
+this code in the dealloc function.
+Always using setters therefore increases encapsulation and provides the
+correct behavior when assigning and dealloc-ing.
+
+65b (complem.): Do not write private property for members of primitive type,
+except if:
+- some code must be bundled with the set, the get, or both
+- a public property exists for getting the value; by defining a private
+property for the set, you ensure that the variable can be accessed
+consistently within the implementation file (otherwise it would be confusing
+to access the variable using self.m_name; sometimes this could be dropped,
+and if the getter is bundled with code as well, then encapsulation has been
+breached).
+
+65b (complem.): By using properties this way, we in fact are close to
+the use of smart pointers in C++. No need to manually release the
+memory, assignment does it for us.
+
+
+

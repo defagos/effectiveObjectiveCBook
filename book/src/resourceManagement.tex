@@ -1,4 +1,46 @@
-10. Never call dealloc directly. Only call (auto)release
+\chapter{Resource management}
+This chapter is mostly devoted to memory management in a reference-counted environment, but also discusses management of scarce resources (file descriptors, buffers, handles to kernel objects, etc.).
+
+Since Objective-C 2.0, the language runtime supports both manual memory management through reference-counting as well as automatic management using the garbage collector.
+
+As for any environment requiring the programmer to manage memory manually, good practices are of great help to avoid leaking memory unnecessarily, and to help the programmer write better code. The main focus of this chapter is therefore on reference-counting. A later chapter is devoted to the best practices in a garbage-collected environment.
+
+Without good practices, reference-counting in Objective-C can lead to the same problems arising when C programmers use the malloc and free functions, or when C++ progammers use operators new and delete. But thanks to features of Objective-C and conventions applied consistently among the Objective-C programming community, most of these issues can be circumvented.
+
+\section{Understand how reference-counting works in Objective-C}
+In C++, programmers are used to smart pointers. Smart pointers are simply objects acquiring ownership of a resource, usually a piece of memory allocated from the heap, and responsible of releasing this resource when the program is done with it. The name \sl{smart pointer} stems from the fact that, thanks to C++ support for operator overloading, such objects can be given pointer-like semantics. The next iteration of the C++ standard will offer the following smart pointers:
+\begin{itemize}
+\item Auto pointers, which transfer ownership upon copy. Due to this often misleading semantics, the use of these smart pointers is generally not recommended.
+\item Scoped pointers, which cannot transfer ownership (this is achieved by prohibiting copy operations). These smart pointers are in general intended for local use.
+\item Reference-counted pointers, which count how many times the pointer is referenced by the running program. When the counter variable drops to zero, the managed resource is released. Such pointers are considered to be strong references, and suffer from retain cycle issues: If two objects each maintain a strong reference to each other, they will ultimately collapse into an unreachable object pair, leading to a memory leak. The same problem can of course also arise if a chain of object connected by reference-counted pointers closes itself.
+\item Weak pointers have been introduced to solve the retain cycle problem. Those are reference-counted pointers (i.e. participating in the reference count), but with the property that objects only referenced through weak pointers can be destroyed. By identifying the head and the tail of a chain of objects connected through strong references, one can therefore break the cycle by having the tail only store a weak reference to the head. In object pairs, this ultimately translates into identifying a parent object which will store the strong reference.
+\end{itemize}
+
+Unlike the C / C++ runtimes, the non-GC Objective-C runtime applies a reference-counted strategy for memory allocated from the heap. In C++ the reference counter is transparently increased when copying or destroying reference-counted pointers, thanks to the use of C++ destructors and operator overloading. Objective-C does not have any of these features and therefore requires the programmer to explicitly ask the runtime to increment or decrement the reference counter. When the counter drops to zero, the dealloc message is sent to the object, and the memory is reclaimed. The Objective-C runtime therefore only frees the programmer from defining a private member for the reference counter and from calling dealloc when the object is no longer in use. For this reason, you must never call dealloc directly when you want to free an object. The only exception to this rule is in class hierarchies, where the dealloc method of a class must call the dealloc method of its parent class.
+
+In Objective-C, the following messages manipulate the reference-count of an object
+\begin{itemize}
+\item alloc: When creating a new object from scratch, its reference count is automatically set to 1
+\item Messages whose name begins with new, copy or mutableCopy: When obtaining an object from such a function, assume that its reference count has been set to 1
+\item retain: This function is called when you need an additional strong reference to an object, effectively adding 1 to the internal counter
+\item release: This function is called when you want a strong reference to be immediately released, effectively removing 1 from the internal counter
+\item autorelease: In C++, it is safe (and considered good practice) to return a reference-counted pointer to a resource from a function which has acquired it. No such idiom can exist in Objective-C without support from the runtime. The solution is the autorelease message. By sending an autorelease message, you ask the runtime not to call dealloc when the reference counter drops to zero, but to put the object within an object pool for some more time, without having the object sent the dealloc message. During the time the autoreleased object remains in the pool, somebody might reclaim it again, bringing the object to life again. The exact time at which the object will be released is handled by the concept of autorelease pools, basically a cemetery for autoreleased objects waiting for dealloc. Many pools can coexist for a given thread, in which case they will be arranged as a stack. Autoreleased items are always put into the top pool when their counter drops to zero. At least a pool must be created per thread (otherwise autorelease cannot be called from it), additional pools can be used to get a fine-grained control over the lifetime of autoreleased objects. Note that pools might also be silently created by frameworks you use. For example, the iOS UIKit framework creates an autorelease pool when a run loop begins, and clears it when the run loop ends. In general, you should therefore assume that an autoreleased object only resides in a pool for a small amount of time. From a programmer's point of view, this in general means you can safely use an autoreleased object within the current block or the parent calling function. This covers most of the uses of autorelease you will encouter on a daily basis.
+\item copy
+\end{itemize}
+
+\subsection{Things to remember}
+\begin{itemize}
+\item The Objective-C runtime offers a reference-counted mechanism for objects allocated on the heap.
+\item The reference counter is set to 1 when sending alloc..., new..., copy... or mutableCopy... messages.
+\item The reference counter is increased when retain is sent.
+\item The release and autorelease messages decrease the reference counter. An object which was only sent release messages will be sent dealloc immediately. An object which received at least an autorelease message will be sent dealloc a little bit later.
+\item Never call dealloc directly, except for calling the parent class dealloc function when implementing a dealloc method
+\end{itemize}
+
+\section{Use strong and weak references correctly}
+
+
+10b. Weak pointers = raw pointers
 
 11. In setters for object members, use the “retain, then release” idiom (retain the new value, then release the old one). Other idioms exist, but this is the safest and shortest (# lines of code) idiom, and the performance hit is paid only when assigning the same value (which is in general quite rare)
 
@@ -224,6 +266,8 @@ NSString * c_days[] = {@"Monday", @"Tuesday", @"Wednesday", @"Thursday",
 @end
 
 //*************** end ***************
+
+When examined in isolation, the reference-counting mechanism of Objective-C is no more convenient than the usual malloc / free pair of C. But combined 
 
 63. (THE solution) See "Property re-declaration" in
 http://developer.apple.com/mac/library/documentation/cocoa/conceptual/Object

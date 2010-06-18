@@ -47,49 +47,78 @@ Note that there is no special C++-like weak pointer concept in Objective-C. When
 \section{Use autorelease pools wisely}\section{sec:autoreleasePools}
 An autorelease pool (NSAutoreleasePool) is basically a way of deferring object deallocation(see \ref{sec:refCountingBasics}. This is namely only when a pool is cleaned that autoreleased objects registered with it and having a retain count of zero are sent a dealloc message. Otherwise they simply gets unregistered but are left alive.
 
-Since autorelease and NSAutoreleasePool are not part of the Objective-C runtime but belong to the fundamental framework, pool management is the responsibility of the programmer. You are not limited to the use of only one autorelease pool. Each thread namely manages its own pool stack, with the most recently created pool on top of it. But at least you should ensure that a pool is created when a thread starts, and gets destroyed when the thread exits. This holds for the main thread as well.\footnote{If you are using Xcode, project templates generate the corresponding code for you.} 
+Since autorelease and NSAutoreleasePool are not part of the Objective-C runtime but belong to the fundamental framework, pool management is the responsibility of the programmer. You are not limited to the use of one autorelease pool. Each thread namely manages its own pool stack, with the most recently created pool on top of it. But at least you should ensure that a pool is created when a thread starts, and gets destroyed when the thread exits. Otherwise autoreleasing will fail. This of course holds for the main thread as well.\footnote{If you are using Xcode, project templates generate the corresponding code for you.} 
 
-The use of several autorelease pools per thread provides for a finer-grained control of memory usage, especially when many autoreleased objects are created locally.\footnote{Frameworks usually introduce use additional autorelease pools. For example, the iOS UIKit framework creates an autorelease pool when a run loop begins, and releases it when the run loop ends.} When an autorelease message is sent to an object within a given thread, the object is nameley registered with the pool on top of the stack. By enclosing code which locally generates many autoreleased objects within a pool creation / destruction pair, you can reduce the duration of the associated memory footprint.
-
-It is important that a function or a class which creates an autorelease pool also releases it when it is done with it. Failure to do so would break the rule that you can use autoreleased objects returned from functions. Imagine for example
-
-
-
-The autorelease message is mainly used in the following cases:
-\begin{itemize}
-\item When an object created within a function is returned to the caller, but that the caller must not be responsible of performing the corresponding release. By sending an autorelease message to the object it created before returning it, the function guarantees its caller that it can still use the object after the function has returned. This is for example the case with factory methods:
+It is important that a function or a class which creates an autorelease pool also releases it when it is done with it. Failure to release a pool at the same level it was created does not leak memory, but should be frowned upon. Consider the following example:
 \begin{lstlisting}[frame=single]
 - (void)method
 {
-    Movie *movie = [Movie movieWithTitle:@"Scarface"];
-    // Can use movie safely
-    [movie printActors];
-    // ...
+    // Create a pool to reduce the duration of the MemoryBlock object memory footprint
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    
+    MemoryBlock *block = [MemoryBlock memoryBlockWithSizeInMB:256];
+    
+    // Assume this method creates an autorelease pool but fails to release it
+    [self loadFileInMemoryBlock:block];
+    
+    // This pool is released at the same level it has been created. Good.
+    [pool release];
 }
 \end{lstlisting}
-\item For creating temporary objects. Such objects can be either left dangling until they die, or immediately retained:
-- (void)someMethod
+Intuitively we might think that the never released pool will stay forever and that the associated memory will be leaked. This is not the way the pool stack works: When a pool is released, all pools located above it in the stack are namely destroyed. The example above therefore does not leak memory. But hey, that is not the kind of code you want to write, is it?
+
+The use of several autorelease pools per thread provides a finer-grained control of memory usage, especially when many autoreleased objects are created locally.\footnote{Frameworks usually create additional autorelease pools. For example, the iOS UIKit framework creates an autorelease pool when a run loop begins, and releases it when the run loop ends.} When an autorelease message is sent to an object within a given thread, the object is nameley registered with the pool on top of the stack. By enclosing code which locally generates many autoreleased objects within a pool creation / destruction pair, you can reduce the duration of the associated memory footprint.
+
+Even when many temporary objects are created locally, it might not make sense to introduce additional autorelease pools. Consider for example the following code:
+\begin{lstlisting}[frame=single]
+- (void)method
 {
-    // The movie object is then left dangling until the pool it is registered with is cleared
-    Movie *movie = [[[Movie alloc] initWithTitle:@"The Godfather 1"] autorelease];
-    [movie printActors];
+    // Create a pool to collect temporary objects
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     
-    // The otherMovie object is here immediately retained (assume that the currentlyPlayedMovie
-    // property has the retain attribute)
-    m_cinema.currentlyPlayedMovie = movie;
+    // Create lots of heavy temporary objects using the factory method
+    for (int i = 1000; i < 10000; ++i) {
+        HeavyObject *object = [HeavyObject heavyObjectWithWeight:i];
+        // Use object
+    }
+    
+    // Release the pool at the same level it has been created in. Good.
+    [pool release];
 }
+\end{lstlisting}
+If all you have is a method returning you temporary objects, the above solution works fine. But here, we can directly create and release the objects within the loop instead of using the factory method. This way there is no need for an autorelease pool anymore:
+\begin{lstlisting}[frame=single]
+- (void)method
+{
+    // Create lots of heavy temporary objects
+    for (int i = 1000; i < 10000; ++i) {
+        HeavyObject *object = [[HeavyObject alloc] initWithWeight:i];
+        // Use object
+        [object release];
+    }
+}
+\end{lstlisting}
+Moreover, a pool is unnecessary if the temporary objects get retained somehow:
+\begin{lstlisting}[frame=single]
+- (void)method
+{
+    // Create lots of heavy temporary objects using the factory method
+    for (int i = 1000; i < 10000; ++i) {
+        HeavyObject *object = [HeavyObject heavyObjectWithWeight:i];
+        
+        // Mutable array; retain objects which are added to it
+        [m_heavyObjects addObject:object];
+    }
+}
+\end{lstlisting}
+
+\subsection{Things to remember}
+\begin{itemize}
+\item Autorelease pools must be managed by the programmer. An autorelease pool should be created and destroyed at the same level.
+\item At least one autorelease pool must be created for each thread. This includes the application main thread.
+\item Read the documentation of the frameworks you use to know about how they may use additional memory pools.
+\item Do not create autorelease pools if you do not have to. Sometimes autorelease objects can be replaced by objects you can release directly.
 \end{itemize}
-
-Temporary objects: Two cases:
-a) Temporary object
-
-
-
-
-example: loop with temporary objects -> no need for autorelease, simply alloc / release. Exception: if function gets called to create the objects, it may be useful.
-
-
-30
 
 
 
@@ -114,15 +143,9 @@ example: loop with temporary objects -> no need for autorelease, simply alloc / 
 
 29. Within a given block of code / class, the number of alloc / copy / mutableCopy / retain / new must match the number of release / autorelease messages
 
-30. Autorelease pool: If you manage, be sure to create and destroy in the same scope, otherwise you cannot trust autoreleased objects returned from functions at all, in contradiction to conventions
-
-31. autorelease needs an autorelease memory pool. Be sure you define one just after entering your program (if using XCode templates this code is readily available from the start). Additionnal autorelease pools can be defined for fine-grained control over the lifetime of autorelease objects (and are in fact defined by the framework). Autorelease pools are stacked so that newly autorelease-d objects end up in the pool at the top. Keep in mind that GUI apps release an autorelease pool at the end of each event loop. One autorelease pool stack exists for each thread, and creating / releasing this pool should be the first / last thing your thread function performs.
-
 32. Beware of cyclic references between classes. When such cycles must be broken, identify which class must own a strong reference to the other one. In the owned class simply reference the owner class instance using a “mw_” member variable. In Cocoa, references to table data sources, outline views, notification observers and delegates are always weak. Try to stick to these conventions when writing your own classes.
 
 33. Scarced resources (file descriptors, network connections, buffers, caches, etc.) must not be released in dealloc, since dealloc could be sidestepped (e.g. bug in reference-counting management, making the release not occur where expected; or application tear-down). Instead, create a cleanup function and call it when you want to dispose of a scarce resource in a predictable way. This call occurs usually just prior to a release call, but this way the scarce resource is guaranteed to be released, even if the release which follows does not end up in a dealloc.
-
-34. When receiving an autoreleased object (which is what you assume in most cases, see 15), you have the choice to retain it if you think it will not survive long enough before being really released. Otherwise you can just work with it as a temporary, it will survive until the autorelease pool is released. For “local” functions it is safe to assume that such objects will survive, unless of course you nest an autorelease memory pool release in between.
 
 46. Best practice for objects with copy semantics, when returning them from objects: return [[obj copy] autorelease];
 

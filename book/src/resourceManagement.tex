@@ -14,39 +14,96 @@ Among the several smart pointer flavors encountered in C++, two are of particula
 \item Weak pointers, which have been introduced to solve the retain cycle problem. Such pointers participate in the reference count, but with the special property that objects only referenced through weak pointers are destroyed. By identifying the head and the tail of a chain of objects connected through strong references, one can therefore break the cycle by having the tail only store a weak reference to the head. In object pairs, this ultimately translates into identifying a parent object which will store the strong reference. One could use raw pointers as weak pointers, but weak pointers objects have still been created to offer more robustness against use of an unreleased ressource.
 \end{itemize}
 
-The C / C++ runtime leaves the programer completely free to choose how shes wants to manage memory, whether through manual allocation and deallocation, or by using smart pointer objects. In Objective-C, no C++-like smart pointer objects can exist due to the lack of some of C++ built-in features. Nevertheless, the non-GC Objective-C runtime still offers a reference-counted strategy for objects allocated on the heap: Objects are identified by a raw pointer to their memory location, but the runtime also maintains a reference counter for objects internally. In the case of C++ reference-counted pointers, the reference counter is transparently increased when copying or destroying pointers, thanks to the use of C++ destructors and operator overloading. Objective-C does not have any of these features and therefore requires the programmer to explicitly ask the runtime to increment or decrement the counter. When it drops to zero, the runtime sends the dealloc message to the object and reclaims the associated memory. The Objective-C runtime therefore only frees the programmer from defining a private member for the reference counter and from calling dealloc when the object is no longer in use, but still requires a careful manual management of the reference counter.
+The C / C++ runtime leaves the programer completely free to choose how shes wants to manage memory, whether through manual allocation and deallocation, or by using smart pointer objects. In Objective-C, no C++-like smart pointer objects can exist due to the lack of some of C++ built-in features. Nevertheless, non-GC Objective-C still offers a reference-counted strategy for objects allocated on the heap: Objects are identified by a raw pointer to their memory location, but maintain a reference counter. In the case of C++ reference-counted pointers, the reference counter is transparently increased when copying or destroying pointers, thanks to the use of C++ destructors and operator overloading. Objective-C does not have any of these features and therefore requires the programmer to explicitly ask the object to increment or decrement its counter. When the counter drops to zero, the dealloc message is sent to the object and the associated memory is reclaimed. Objective-C therefore only frees the programmer from defining a private member for the reference counter and from calling dealloc when the object is no longer in use, but still requires a careful manual management of the reference counter.
 
 Since dealloc is called automatically when the reference counter reaches zero, you must never call dealloc directly when you want to free an object. The only case in which you can (and must!) call dealloc is when implementing the dealloc method in class hierarchies: In order for the resources to be released, each dealloc method must namely call its parent counterpart.
 
-In Objective-C, the following messages manipulate the reference-count of an object:
+In Objective-C, many messages may alter the reference-count of an object. Most of them are directly inherited from the NSObject class. These concepts are therefore not part of the Objective-C runtime but belong to the fundamental framework. This explains why you should always derive your root classes from NSObject. Moreover, you should never have to override those methods, at least not in a way that their expected behavior is altered (you could imagine adding some logging or check features, though):
 \begin{itemize}
-\item alloc: When creating a new object from scratch, its reference count is automatically set to 1
-\item Messages whose name begins with new, copy or mutableCopy: When obtaining an object from such a function, assume that its reference count has been set to 1
+\item alloc and allocWithZone:: When creating a new object from scratch, its reference count is automatically set to 1
 \item retain: You send this message when you need an additional strong reference to an object, effectively adding 1 to the internal counter
 \item release: You send this message when you want a strong reference to be immediately released, effectively removing 1 from the internal counter
-\item autorelease: In C++, it is safe (and considered good practice) to return a reference-counted pointer to a resource from a function which has acquired it. No such idiom can exist in Objective-C without support from the runtime, and a solution had to be found: The autorelease message. By sending such a  message, you ask the runtime not to call dealloc when the reference counter drops to zero, but to put the object within an object pool for some more time, without having the object sent the dealloc message. During the time the autoreleased object remains in the pool, somebody might reclaim it, bringing the object to life again. The exact time at which the object will be released is handled by the concept of autorelease pools, waiting rooms for autoreleased objects ready for deallocation. Autorelease pool creation is the responsibility of the programmer, not of the runtime. Many pools can be created within a given thread, in which case they will be arranged as a stack. An object which has been autoreleased once in its lifetime ends up in the top pool when its counter drops to zero. The first thing you should do when forking a new thread is to create an associated autorelease pool, otherwise you won't be able to call autorelease from it. This of course holds for the main thread as well.\footnote{If you are using Xcode, project templates usually generate the corresponding code for you} Conversely, the last thing you should do when leaving a thread is releasing this memory pool. Additional pools are optional and can be used to get a fine-grained control over the lifetime of autoreleased objects. Note that pools are in general also silently managed by frameworks you use. For example, the iOS UIKit framework creates an autorelease pool when a run loop begins, and releases it when the run loop ends. In general, you should therefore assume that an autoreleased object only resides in a pool for a small amount of time. From a programmer's point of view, you can in general safely assume that an autoreleased object can still be used within the current block. Objects received from functions are generally autoreleased, and you can also safely assume they are still valid since the time they were created and autoreleased, even if that happened deeply nested within a function call chain (see \ref{sec:autoreleasePools}).
-\item copy
+\item autorelease: In C++, it is safe and considered good practice to return a reference-counted pointer to a resource from a function which has acquired it. Since C++-like smart pointers cannot be effectively implemented in Objective-C, no such idiom can exist in this language. This is why the autorelease message was introduced. By sending an autorelease message to an object, you ask it to register itself with an object pool for some time, and to decrease its reference counter. If the counter reaches zero when the object is still registered with the pool, the object will not be sent the dealloc message, but will stay available until the pool is emptied. During that time, you can still safely use the object or reclaim it again if you need to keep it alive longer. When the pool is cleared, any object whithin it having a retain count of zero is sent the dealloc message. Otherwise it is simply unregistered from the pool, keeping its reference counter intact. As a general rule, an object remains valid within the block it is sent an autorelease message in. This may not be true in cases where autorelease messages and pool management are interleaved, but this is the exception, not the rule. Moreover, objects received from functions are generally autoreleased (see \ref{sec:refCountingConventions}. You can safely assume that such objects can still be used, even if they were sent the autorelease message higher in the function call stack. For more information about autorelease pool management, see \ref{sec:autoreleasePools}.
 \end{itemize}
+Moreover, messages whose name begins with new, copy or mutableCopy always yield a newly built object with a reference counter of 1.
+
 Note that there is no special C++-like weak pointer concept in Objective-C. When you need a weak reference to an object, simply store the raw object pointer without retaining it.
 
 \subsection{Things to remember}
 \begin{itemize}
-\item The Objective-C runtime offers a reference-counted mechanism for objects allocated on the heap.
+\item Objective-C offers a reference-counted mechanism for objects allocated on the heap.
 \item The reference counter is set to 1 when sending alloc..., new..., copy... or mutableCopy... messages.
 \item The reference counter is increased when retain is sent.
-\item The release and autorelease messages decrease the reference counter. An object which was only sent release messages will be sent dealloc immediately. An object which received at least an autorelease message will be sent dealloc a little bit later.
-\item Never call dealloc directly, except for calling the parent class dealloc function when implementing a dealloc method
-\item When a weak reference to an object is needed, simply store the raw pointer object without retaining it
+\item The release and autorelease messages decrease the reference counter. An object which was only sent release messages will be sent dealloc immediately when its reference count drops to zero. An object which received at least an autorelease message will be deallocated some time after its reference count reaches zero.
+\item Never call dealloc directly, except for calling the parent class dealloc function when implementing a dealloc method.
+\item When a weak reference to an object is needed, simply store the raw pointer object without retaining it.
 \end{itemize}
 
 \section{Know the conventions governing memory management}\section{sec:refCountingConventions}
-
 12
 23
 29
 
 \section{Use autorelease pools wisely}\section{sec:autoreleasePools}
+An autorelease pool (NSAutoreleasePool) is basically a way of deferring object deallocation(see \ref{sec:refCountingBasics}. This is namely only when a pool is cleaned that autoreleased objects registered with it and having a retain count of zero are sent a dealloc message. Otherwise they simply gets unregistered but are left alive.
+
+Since autorelease and NSAutoreleasePool are not part of the Objective-C runtime but belong to the fundamental framework, pool management is the responsibility of the programmer. You are not limited to the use of only one autorelease pool. Each thread namely manages its own pool stack, with the most recently created pool on top of it. But at least you should ensure that a pool is created when a thread starts, and gets destroyed when the thread exits. This holds for the main thread as well.\footnote{If you are using Xcode, project templates generate the corresponding code for you.} 
+
+The use of several autorelease pools per thread provides for a finer-grained control of memory usage, especially when many autoreleased objects are created locally.\footnote{Frameworks usually introduce use additional autorelease pools. For example, the iOS UIKit framework creates an autorelease pool when a run loop begins, and releases it when the run loop ends.} When an autorelease message is sent to an object within a given thread, the object is nameley registered with the pool on top of the stack. By enclosing code which locally generates many autoreleased objects within a pool creation / destruction pair, you can reduce the duration of the associated memory footprint.
+
+It is important that a function or a class which creates an autorelease pool also releases it when it is done with it. Failure to do so would break the rule that you can use autoreleased objects returned from functions. Imagine for example
+
+
+
+The autorelease message is mainly used in the following cases:
+\begin{itemize}
+\item When an object created within a function is returned to the caller, but that the caller must not be responsible of performing the corresponding release. By sending an autorelease message to the object it created before returning it, the function guarantees its caller that it can still use the object after the function has returned. This is for example the case with factory methods:
+\begin{lstlisting}[frame=single]
+- (void)method
+{
+    Movie *movie = [Movie movieWithTitle:@"Scarface"];
+    // Can use movie safely
+    [movie printActors];
+    // ...
+}
+\end{lstlisting}
+\item For creating temporary objects. Such objects can be either left dangling until they die, or immediately retained:
+- (void)someMethod
+{
+    // The movie object is then left dangling until the pool it is registered with is cleared
+    Movie *movie = [[[Movie alloc] initWithTitle:@"The Godfather 1"] autorelease];
+    [movie printActors];
+    
+    // The otherMovie object is here immediately retained (assume that the currentlyPlayedMovie
+    // property has the retain attribute)
+    m_cinema.currentlyPlayedMovie = movie;
+}
+\end{itemize}
+
+Temporary objects: Two cases:
+a) Temporary object
+
+
+
+
+example: loop with temporary objects -> no need for autorelease, simply alloc / release. Exception: if function gets called to create the objects, it may be useful.
+
+
 30
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 11. In setters for object members, use the “retain, then release” idiom (retain the new value, then release the old one). Other idioms exist, but this is the safest and shortest (# lines of code) idiom, and the performance hit is paid only when assigning the same value (which is in general quite rare)

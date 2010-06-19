@@ -32,17 +32,41 @@ Note that there is no special C++-like weak pointer concept in Objective-C. When
 \subsection{Things to remember}
 \begin{itemize}
 \item Objective-C offers a reference-counted mechanism for objects allocated on the heap.
-\item The reference counter is set to 1 when sending alloc..., new..., copy... or mutableCopy... messages.
+\item The reference counter is set to 1 when sending alloc, new, copy or mutableCopy messages.
 \item The reference counter is increased when retain is sent.
 \item The release and autorelease messages decrease the reference counter. An object which was only sent release messages will be sent dealloc immediately when its reference count drops to zero. An object which received at least an autorelease message will be deallocated some time after its reference count reaches zero.
 \item Never call dealloc directly, except for calling the parent class dealloc function when implementing a dealloc method.
 \item When a weak reference to an object is needed, simply store the raw pointer object without retaining it.
 \end{itemize}
 
-\section{Know the conventions governing memory management}\section{sec:refCountingConventions}
-12
-23
-29
+\section{Know and follow the conventions governing memory management}\section{sec:refCountingConventions}
+A function or method can return an object it created in two different ways. It can either return the object as is, requiring the caller to release it when it is done with it or, thanks to the autorelease concept, it can return an object waiting for deallocation.
+
+From a caller's perspective, how can you know whether you are responsible of releasing the object you receive or not, i.e. whether you own the returned object or not? You could of course test the retain count of the object just after receiving it (by sending it the retainCount message), but this would be extremely painful and would clutter your code with tests, preventing you from chaining function calls. The solution adopted in Objective-C is to rely on conventions based on the name of the functions or methods you call. Thankfully, the conventions governing objects returned from functions or methods are very easy to remember:
+\begin{itemize}
+\item alloc / init, allocWithZone / init, as well as the new, copy and mutableCopy methods, return objects you own with a retain count of 1
+\item In all other cases, functions and methods return autoreleased objects you do not own, and with a retain count of 0
+\end{itemize}
+
+These rule are followed consistently across the Objective-C community, it is therefore mandatory that you stick to them as well when writing your own code. These naming conventions are part of a function's interface in Objective-C, and breaking them is the shortest way to disaster. You definitely do not want to use code which does not conform to the rules or to publish code which other programmers cannot trust (you have self esteem, right?)
+
+It is also important that the retain counts returned are always either 0 or 1. If it were not the case, you would have no mean of guessing how many times you must release an object you receive (as said before, asking an object for its retain count is not an option).
+
+So far for naming conventions in interfaces, let us talk about implementation issues now. Fortunately. there is a single rule to follow in order to minimize memory leaks: Each piece of code must have no overall effect on retain counts, except those advertised by its interface. Most notably, this means that:
+\begin{itemize}
+\item Within a given block of code, each operation which increments a retain count must be compensated by an operation which decrements it. In functions or methods returning an object with a retain count of 1, the only exception is of course the object creation itself.
+\item During its lifetime, if an object acquires resources, it must release them accordingly, so that when the object is deallocated the overall effect on retain counts is neutral.
+\end{itemize}
+
+A corollary of the previous rules is that you must never release resource in a piece of code which did not acquire it. Overreleasing an object crashes your application and is not easy to debug and fix. Matters are even worse with autoreleased objects, since you application will not crash immediately, but when the pool is emptied.
+
+\subsection{Things to remember}
+\begin{itemize}
+\item Know the naming conventions related to naming conventions, trust them and ensure that your code also fulfills them.
+\item alloc / init, allocWithZone / init, as well as new, copy and mutableCopy, return objects you own with a retain count of 1. In all other cases, functions returning objects return autoreleased instances with a retain count of 0.
+\item Each piece of code must have no overall effect on retain counts, except those advertised by its interface.
+\item Beware of overreleased objects, which can lead to bugs which are difficult to track and fix.
+\end{itemize}
 
 \section{Use autorelease pools wisely}\section{sec:autoreleasePools}
 An autorelease pool (NSAutoreleasePool) is basically a way of deferring object deallocation(see \ref{sec:refCountingBasics}. This is namely only when a pool is cleaned that autoreleased objects registered with it and having a retain count of zero are sent a dealloc message. Otherwise they simply gets unregistered but are left alive.
@@ -137,17 +161,18 @@ Moreover, a pool is unnecessary if the temporary objects get retained somehow:
 
 11. In setters for object members, use the “retain, then release” idiom (retain the new value, then release the old one). Other idioms exist, but this is the safest and shortest (# lines of code) idiom, and the performance hit is paid only when assigning the same value (which is in general quite rare)
 
-12. Assume that you own objects you get using new, alloc, copy or mutableCopy. You also own objects you explicitly retain. In all other cases assume you do not own them and that those objects are autorelease-d (i.e. will be released when the memory pool itself is released, which happens at least at the end of each event loop for GUI apps, i.e. after each event has been processed!). When writing your own classes, implement this rule consistently
 
-23. When returning objects from functions which allocated them, autorelease the object upon returning it.
+11b. Document behavior if not explicit (e.g. if an object is retained when passing it to your init function or to an add... method, like for NSMutableArray)
 
-29. Within a given block of code / class, the number of alloc / copy / mutableCopy / retain / new must match the number of release / autorelease messages
 
 32. Beware of cyclic references between classes. When such cycles must be broken, identify which class must own a strong reference to the other one. In the owned class simply reference the owner class instance using a “mw_” member variable. In Cocoa, references to table data sources, outline views, notification observers and delegates are always weak. Try to stick to these conventions when writing your own classes.
 
 33. Scarced resources (file descriptors, network connections, buffers, caches, etc.) must not be released in dealloc, since dealloc could be sidestepped (e.g. bug in reference-counting management, making the release not occur where expected; or application tear-down). Instead, create a cleanup function and call it when you want to dispose of a scarce resource in a predictable way. This call occurs usually just prior to a release call, but this way the scarce resource is guaranteed to be released, even if the release which follows does not end up in a dealloc.
+Same issue without GC (autorelease, but deterministic) or with GC (automatic collection, but non-deterministic), therefore this item is relevant to both approaches.
 
 46. Best practice for objects with copy semantics, when returning them from objects: return [[obj copy] autorelease];
+
+47. Convenience constructors (factory methods)
 
 58. Release early if you can. For example, these two code samples have the same effect:
 

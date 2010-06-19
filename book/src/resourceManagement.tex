@@ -44,8 +44,8 @@ A function or method can return an object it created in two different ways. It c
 
 From a caller's perspective, how can you know whether you are responsible of releasing the object you receive or not, i.e. whether you own the returned object or not? You could of course test the retain count of the object just after receiving it (by sending it the retainCount message), but this would be extremely painful and would clutter your code with tests, preventing you from chaining function calls. The solution adopted in Objective-C is to rely on conventions based on the name of the functions or methods you call. Thankfully, the conventions governing objects returned from functions or methods are very easy to remember:
 \begin{itemize}
-\item alloc / init, allocWithZone / init, as well as the new, copy and mutableCopy methods, return objects you own with a retain count of 1
-\item In all other cases, functions and methods return autoreleased objects you do not own, and with a retain count of 0
+\item alloc / init, allocWithZone / init, as well as the new, copy and mutableCopy methods, return objects you own with a retain count of 1.
+\item In all other cases, functions and methods return either autoreleased objects you do not own with a retain count of 0, or static constant objects.
 \end{itemize}
 
 These rule are followed consistently across the Objective-C community, it is therefore mandatory that you stick to them as well when writing your own code. These naming conventions are part of a function's interface in Objective-C, and breaking them is the shortest way to disaster. You definitely do not want to use code which does not conform to the rules or to publish code which other programmers cannot trust (you have self esteem, right?)
@@ -65,7 +65,7 @@ There is one more case to discuss: Objects which acquire ownership of an object 
 \subsection{Things to remember}
 \begin{itemize}
 \item Know the naming conventions related to naming conventions, trust them and ensure that your code also fulfills them.
-\item alloc / init, allocWithZone / init, as well as new, copy and mutableCopy, return objects you own with a retain count of 1. In all other cases, functions returning objects return autoreleased instances with a retain count of 0.
+\item alloc / init, allocWithZone / init, as well as new, copy and mutableCopy, return objects you own with a retain count of 1. In all other cases, functions returning objects return autoreleased instances with a retain count of 0 or static constant objects.
 \item Each piece of code must have no overall effect on retain counts, except those advertised by its interface.
 \item Beware of overreleased objects, which can lead to bugs which are difficult to track and fix.
 \item Collections acquire ownership of the objects you add to them. When writing your own collections, follow the same rule.
@@ -115,7 +115,7 @@ Even when many temporary objects are created locally, it might not make sense to
     [pool release];
 }
 \end{lstlisting}
-If all you have is a method returning you temporary objects, the above solution works fine. But here, we can directly create and release the objects within the loop instead of using the factory method. This way there is no need for an autorelease pool anymore:
+If all you have is a method returning you temporary objects, or if the objects are quite small, the above solution of course works fine. But here, we can directly create and release the objects within the loop instead of using the factory method. This way there is no need for an autorelease pool anymore:
 \begin{lstlisting}[frame=single]
 - (void)method
 {
@@ -165,6 +165,117 @@ Moreover, the dealloc function is not used when the garbage-collector is enabled
 \item Move all other cleanup code outside of dealloc, and call it when you know you are done with the object. This is especially important to avoid wasting scarce resources.
 \end{itemize}
 
+\section{Use properties to automate memory management}
+In C++, smart pointers take care of releasing the resource they owned prior to beassigned a new resource. This very useful mechanism helps avoiding memory leaks and relives the programmer from low-level ownership management. Since smart pointer objects cannot be implemented in Objective-C, this mechanism is not available as is, but can nonetheless be implemented thanks to properties.
+
+Consider how you would naively implenent a Magic 8-ball class, which provides you with a shake method to ask for a new nasty message by shaking it, a rub method to get a new nice message by rubbing it, and a readonly fortuneMessage accessor for reading the current message:
+\begin{lstlisting}[frame=single, caption={MagicEightBall.h}]
+@interface MagicEightBall {
+    NSString *m_fortuneMessage;
+}
+
+- (void)shake;
+- (void)rub;
+
+@property (readonly) NSString *fortuneMessage
+
+@end
+\end{lstlisting}
+The implementation is straightforward:
+\begin{lstlisting}[frame=single, caption={MagicEightBall.m}]
+@implementation MagicEightBall
+
+- (void)dealloc
+{
+    [m_fortuneMessage release];
+    [super dealloc];
+}
+
+- (void)shake
+{
+    [self emitShakeSound];
+    [m_fortuneMessage release];
+    m_fortuneMessage = [[self pickNastyRandomMessage] copy];
+}
+
+- (void)rub
+{
+    [self emitRubSound];
+    [m_fortuneMessage release];
+    m_fortuneMessage = [[self pickNiceRandomMessage] copy];
+}
+
+@synthesize fortuneMessage = m_fortuneMessage;
+
+@end
+\end{lstlisting}
+The pickNastyRandomMessage and pickNiceRandomMessage are part of the private class interface, not shown here (TODO: reference to item discussing private interfaces) but, as their name suggest, they return an object we do not own and which I here chose to copy. Before replacing the previous m_fortuneMessage value, we need to release it. Here we have two methods were this value is changed, but imagine if it was changed in several places within the implementation file. If we ever forget to release the old value before replacing it, we create a memory leak. You will probably be careful enough not to make this mistake when you first implement the class, it is very likely that this will not hold as the class evolves.
+
+Fortunately, this problem can easily be solved by using properties. As a preliminary remark, we recall some limitations of properties:
+\begin{itemize}
+\item Two properties cannot be backed up by the same class member.
+\item A property can be overriden in a category or in an extension but, except for the readonly / readwrite attributes, the prototype must be left unaltered.
+\item The @synthesize keyword cannot be used with categories, but works fine with extensions.
+\end{itemize}
+In our case, we can therefore use extensions to declare and synthesize a readwrite version of the fortuneMessage property for use in the implementation file only. This property must have copy semantics to implement the behavior we had:
+\begin{lstlisting}[frame=single, caption={MagicEightBall.m}]
+@interface MagicEightBall ()
+@property (readwrite, copy) NSString *fortuneMessage;
+@end
+
+@implementation MagicEightBall
+
+- (void)dealloc
+{
+    self.fortuneMessage = nil;
+    [super dealloc];
+}
+
+- (void)shake
+{
+    [self emitShakeSound];
+    self.fortuneMessage = [self pickNastyRandomMessage];
+}
+
+- (void)rub
+{
+    [self emitRubSound];
+    self.fortuneMessage = [self pickNiceRandomMessage];
+}
+
+@synthesize fortuneMessage = m_fortuneMessage;
+
+@end
+\end{lstlisting}
+Note that the two versions of the property are generated by the same @synthesize directive, since the main class interface and the extended interface are both implemented by the same @implementation block. Also note that the extension interface has been adeed to the inaccessible .m file in order to keep it private (TODO: reference to private interface section). The readwrite attribute has been here added explicitly but is the default when omitted. We now never update the value of the m_fortuneMessage member, but use the property instead. The property takes care of releasing the old value and of copying the new one. Even dealloc is now implemented by setting the property to nil. Use of the underlying m_fortuneMessage member should in fact now be limited to the implementation of the associated property itself.
+
+The class interface is not altered, except for matching the two property declarations:
+\begin{lstlisting}[frame=single, caption={MagicEightBall.h}]
+@interface MagicEightBall {
+    NSString *m_fortuneMessage;
+}
+
+- (void)shake;
+- (void)rub;
+
+@property (readonly, copy) NSString *fortuneMessage
+
+@end
+\end{lstlisting}
+The added copy attribute does not offer more functionality from a client's perspective.
+
+
+
+
+TODO: Then add notification when value changed
+
+TODO: Threading
+
+TODO: Mention easy change of semantics (retain -> copy) in most cases, except of course when a property has not been synthesized
+
+TODO: Always use self.prop, except when implementing without synthesizing
+
+TODO: Sadly maybe still issues with GC: Since properties can be fatter (i.e. do more work than simply releasing memory) we still must set some members to nil prior to a call to release if these members setters not only release memory (e.g. perform notification, release scarce resources, etc.). Except if GC sets to nil by using the setters, in which case everything is consistent!
 
 
 
@@ -173,26 +284,6 @@ Moreover, the dealloc function is not used when the garbage-collector is enabled
 
 
 
-
-
-
-
-
-
-58. Release early if you can. For example, these two code samples have the same effect:
-
-someView = [[UIView alloc] initWithFrame: ...];
-[parentView addSubview:someView];
-[someView release];
-
-and
-
-someView = [[[UIView alloc] initWithFrame: ...] autorelease];
-[parentView addSubview:someView];
-
-but in the latter case the memory won’t be released until the autorelease pool is cleared. Of course, if all you have is a convenience constructor, the autoreleased object is fine (especially if the objects are small):
-
-object.someStringPropertyWithCopyAttribute = [NSString stringWithFormat: ...];
 
 //*************** Following design is incorrect, but idea - problem is correctly formulated **********
 

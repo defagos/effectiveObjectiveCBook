@@ -5,7 +5,7 @@ Since Mac OS X 10.5, the language runtime supports both manual memory management
 
 Without good practices, reference-counting in Objective-C can lead to the same problems encountered when using the malloc and free functions in C, or operators new and delete in C++. But thanks to features of Objective-C and conventions applied consistently among the Objective-C programming community, most of these issues can be circumvented.
 
-\section{Understand how reference-counting works in Objective-C}\section{sec:refCountingBasics}
+\section{Understand how reference-counting works in Objective-C}\label{sec:refCountingBasics}
 In C++, programmers are used to smart pointers, which are simple objects acquiring ownership of a resource, usually a piece of memory allocated from the heap, and responsible of releasing this resource when the program is done with it. The name smart pointer stems from the fact that, thanks to C++ support for operator overloading, such objects can be given pointer-like semantics. Unlike raw C pointers, smart pointers are not language built-in features, though, but a combination of the C++ powerful concepts of destructor, operator overloading and templates.
 
 Among the several smart pointer flavors encountered in C++, two are of particular interest from the point of view of an Objective-C programmer:
@@ -39,7 +39,7 @@ Note that there is no special C++-like weak pointer concept in Objective-C. When
 \item When a weak reference to an object is needed, simply store the raw pointer object without retaining it.
 \end{itemize}
 
-\section{Know and follow the conventions governing memory management}\section{sec:refCountingConventions}
+\section{Know and follow the conventions governing memory management}\label{sec:refCountingConventions}
 A function or method can return an object it created in two different ways. It can either return the object as is, requiring the caller to release it when it is done with it or, thanks to the autorelease concept, it can return an object waiting for deallocation.
 
 From a caller's perspective, how can you know whether you are responsible of releasing the object you receive or not, i.e. whether you own the returned object or not? You could of course test the retain count of the object just after receiving it (by sending it the retainCount message), but this would be extremely painful and would clutter your code with tests, preventing you from chaining function calls. The solution adopted in Objective-C is to rely on conventions based on the name of the functions or methods you call. Thankfully, the conventions governing objects returned from functions or methods are very easy to remember:
@@ -60,15 +60,20 @@ So far for naming conventions in interfaces, let us talk about implementation is
 
 A corollary of the previous rules is that you must never release resource in a piece of code which did not acquire it. Overreleasing an object crashes your application and is not easy to debug and fix. Matters are even worse with autoreleased objects, since you application will not crash immediately, but when the pool is emptied.
 
+There is one more case to discuss: Objects which acquire ownership of an object you pass to them. This is for example the case when you are adding objects to an NSMutableArray. Collections of the foundation framework always own the objects they are given. If you ever need to write collections, also try to stick to this rule. In all other cases, there is no naming convention, so be sure to cleanly document your interfaces in the case an object acquires ownership of an object it receives. This is automatically the case when you use properties, since attributes state this behavior explicitly, but in other cases (e.g. init methods) you should consider adding a small snippet of documentation. This way your clients will be confident that they can pass your object a temporary one without having to retain it themselves.
+
 \subsection{Things to remember}
 \begin{itemize}
 \item Know the naming conventions related to naming conventions, trust them and ensure that your code also fulfills them.
 \item alloc / init, allocWithZone / init, as well as new, copy and mutableCopy, return objects you own with a retain count of 1. In all other cases, functions returning objects return autoreleased instances with a retain count of 0.
 \item Each piece of code must have no overall effect on retain counts, except those advertised by its interface.
 \item Beware of overreleased objects, which can lead to bugs which are difficult to track and fix.
+\item Collections acquire ownership of the objects you add to them. When writing your own collections, follow the same rule.
+\item Property attributes are a clean way of stating explicitly whether an object acquires ownership of another one or not.
+\item In all cases where naming conventions are not sufficient to guess how a function may alter retain counts, document the interface.
 \end{itemize}
 
-\section{Use autorelease pools wisely}\section{sec:autoreleasePools}
+\section{Use autorelease pools wisely}\label{sec:autoreleasePools}
 An autorelease pool (NSAutoreleasePool) is basically a way of deferring object deallocation(see \ref{sec:refCountingBasics}. This is namely only when a pool is cleaned that autoreleased objects registered with it and having a retain count of zero are sent a dealloc message. Otherwise they simply gets unregistered but are left alive.
 
 Since autorelease and NSAutoreleasePool are not part of the Objective-C runtime but belong to the fundamental framework, pool management is the responsibility of the programmer. You are not limited to the use of one autorelease pool. Each thread namely manages its own pool stack, with the most recently created pool on top of it. But at least you should ensure that a pool is created when a thread starts, and gets destroyed when the thread exits. Otherwise autoreleasing will fail. This of course holds for the main thread as well.\footnote{If you are using Xcode, project templates generate the corresponding code for you.} 
@@ -144,6 +149,21 @@ Moreover, a pool is unnecessary if the temporary objects get retained somehow:
 \item Do not create autorelease pools if you do not have to. Sometimes autorelease objects can be replaced by objects you can release directly.
 \end{itemize}
 
+\section{Use dealloc for releasing memory resources only}
+Scarce resources (file descriptors, network connections, etc.) should not be released in dealloc for several reasons:
+\begin{itemize}
+\item dealloc might not be called due to a bug in reference-counting management or during application tear-down.
+\item dealloc might not be called when the last reference is dropped due to a subscription with an autorelease pool
+\end{itemize}
+To release resources in a predictable way, you should move the corresponding call to a dedicated function. When a scarce resource is not used anymore, simply call this function (which usually should happen just before the resource object is released). This way the scarce resource is guaranteed to be released, even if the object does not get deallocated on the spot, or if it never gets deallocated at all because of some bug.
+
+Moreover, the dealloc function is not used when the garbage-collector is enabled. By moving code which is not related to memory management outside of dealloc, you ensure that your code base can be used with or without garbage-collection, which is especially important for libraries. This also explains why you should only use dealloc for cleaning up memory resources acquired by an object. When garbage-collection is enabled, this mechanism will be completely taken over by the collector.
+
+\subsection{Things to remember}
+\begin{itemize}
+\item Use dealloc to release memory resources aquired by an object. This ensures that your code is compatible with garbage-collection enabled or not.
+\item Move all other cleanup code outside of dealloc, and call it when you know you are done with the object. This is especially important to avoid wasting scarce resources.
+\end{itemize}
 
 
 
@@ -158,21 +178,6 @@ Moreover, a pool is unnecessary if the temporary objects get retained somehow:
 
 
 
-
-11. In setters for object members, use the “retain, then release” idiom (retain the new value, then release the old one). Other idioms exist, but this is the safest and shortest (# lines of code) idiom, and the performance hit is paid only when assigning the same value (which is in general quite rare)
-
-
-11b. Document behavior if not explicit (e.g. if an object is retained when passing it to your init function or to an add... method, like for NSMutableArray)
-
-
-32. Beware of cyclic references between classes. When such cycles must be broken, identify which class must own a strong reference to the other one. In the owned class simply reference the owner class instance using a “mw_” member variable. In Cocoa, references to table data sources, outline views, notification observers and delegates are always weak. Try to stick to these conventions when writing your own classes.
-
-33. Scarced resources (file descriptors, network connections, buffers, caches, etc.) must not be released in dealloc, since dealloc could be sidestepped (e.g. bug in reference-counting management, making the release not occur where expected; or application tear-down). Instead, create a cleanup function and call it when you want to dispose of a scarce resource in a predictable way. This call occurs usually just prior to a release call, but this way the scarce resource is guaranteed to be released, even if the release which follows does not end up in a dealloc.
-Same issue without GC (autorelease, but deterministic) or with GC (automatic collection, but non-deterministic), therefore this item is relevant to both approaches.
-
-46. Best practice for objects with copy semantics, when returning them from objects: return [[obj copy] autorelease];
-
-47. Convenience constructors (factory methods)
 
 58. Release early if you can. For example, these two code samples have the same effect:
 
@@ -578,6 +583,8 @@ breached).
 65b (complem.): By using properties this way, we in fact are close to
 the use of smart pointers in C++. No need to manually release the
 memory, assignment does it for us.
+
+Warning: GC does not call dealloc anymore! => see scarce resources: dealloc must only be used for memory release
 
 
 

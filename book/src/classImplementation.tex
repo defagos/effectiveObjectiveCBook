@@ -6,6 +6,12 @@
 
 22. When implementing optional methods of a protocol, be sure to check if the receiver supports the message before sending it
 
+11. In setters for object members, use the “retain, then release” idiom (retain the new value, then release the old one). Other idioms exist, but this is the safest and shortest (# lines of code) idiom, and the performance hit is paid only when assigning the same value (which is in general quite rare)
+
+46. Defensive practice for objects with copy semantics, when returning them from objects: return [[obj copy] autorelease];. Usual setter returns reference to internal object, i.e. not a copy (property attributes only affect the setter behavior!)
+
+46b. Know the usual implementation idioms for synthesized properties, and know alternatives
+
 23. For performance reasons, it is good practice to cache introspection information where possible. E.g. instead of testing respondsToSelector every time an optional protocol method is being applied on a delegate object within the delegating class implementation file, you could write your delegate setter so that, when a new value is set, this information is checked once and saved as boolean values. That way you won’t pay the performance penalty associated with introspection, which can be especially valuable if your protocol method is heavily called.
 
 24. If a delegate object lives longer than an object which uses it, then the class which uses it must set delegateObj.delegate = nil in the dealloc function. This should be quite rare, though, since a delegate is in general created by the class which requires it.

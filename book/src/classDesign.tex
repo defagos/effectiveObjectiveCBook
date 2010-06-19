@@ -13,6 +13,8 @@
 
 36. Any protocol should have <NSObject> as “parent” protocol. This is not required for protocols having only mandatory members, but for optional ones this is required when implementing the delegating class (we must test respondsToSelector prior to applying optional methods, and the compiler will return a warning if the protocol is not derived from NSObject, since this function is in the NSObject protocol)
 
+47. Convenience constructors (factory methods)
+
 40. Protocol methods for class SomeClass should take a SomeClass * argument. This argument must always allow to access the emitter of the message. We pick up among two choices depending on whether the SomeClass action has an associated parameter or not:
 
 @protocol SomeClassDelegate <NSObject>
@@ -111,3 +113,5 @@ In short: Properties must always return the same type as the underlying
 member.
 
 70. For BOOL properties, you have to write the is... accessor yourself.
+
+71. Have a look at Cocoa / UIKit interfaces, and mimic them / learn from them
